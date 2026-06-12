@@ -1,0 +1,82 @@
+.bubble-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  max-width: 80%;
+}
+
+.bubble-row.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.bubble-row.assistant {
+  align-self: flex-start;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.avatar.user {
+  background: #4caf50;
+  color: #fff;
+}
+
+.avatar.assistant {
+  background: #f44336;
+  color: #fff;
+}
+
+.bubble {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.bubble.user {
+  background: #95ec69;
+  color: #000;
+  border-top-right-radius: 2px;
+}
+
+.bubble.assistant {
+  background: #fff;
+  color: #333;
+  border-top-left-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.bubble p {
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.bubble.streaming {
+  min-width: 40px;
+}
+
+.streaming-text {
+  display: inline;
+}
+
+.cursor {
+  animation: blink 0.7s infinite;
+  font-weight: 300;
+  color: #999;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
