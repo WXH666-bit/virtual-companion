@@ -72,7 +72,7 @@ virtual-companion/
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/Weixhne/virtual-companion.git
+git clone https://github.com/WXH666-bit/virtual-companion.git
 cd virtual-companion
 ```
 
@@ -169,4 +169,4 @@ MIT
 
 ---
 
-<p align="center">Made with ❤️ by <a href="https://github.com/Weixhne">Weixhne</a></p>
+<p align="center">Made with ❤️ by <a href="https://github.com/WXH666-bit">Weixhne</a></p>
