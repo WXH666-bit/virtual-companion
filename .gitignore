@@ -18,3 +18,4 @@ dist/
 # IDE
 .vscode/
 .idea/
+.cache/

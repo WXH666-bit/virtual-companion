@@ -3,21 +3,23 @@ import type { Conversation, Skill } from "../App"
 import { API } from "../App"
 import ChatBubble from "./ChatBubble"
 import ChatInput from "./ChatInput"
+import StickerPicker from "./StickerPicker"
 import { useChat } from "../hooks/useChat"
 import "./ChatWindow.css"
 
 interface Props {
   conversation: Conversation | null
   skills: Skill[]
-  onChangeSkill: (convId: number, skillName: string) => void
-  onTitleChange: (id: number, title: string) => void
+  userProfile: { name: string; avatar: string | null }
+  authToken: string | null
 }
 
-function ChatWindow({ conversation, skills, onChangeSkill, onTitleChange }: Props) {
+function ChatWindow({ conversation, skills, userProfile, authToken }: Props) {
+  const [pickerOpen, setPickerOpen] = useState(false)
   const { messages, send, sending, error, clearError } = useChat(
-    conversation?.id ?? null
+    conversation?.id ?? null,
+    authToken
   )
-  const [skillMenuOpen, setSkillMenuOpen] = useState(false)
 
   if (!conversation) {
     return (
@@ -30,6 +32,19 @@ function ChatWindow({ conversation, skills, onChangeSkill, onTitleChange }: Prop
   }
 
   const currentSkill = skills.find((s) => s.id === conversation.skill_name)
+
+  const handleSelectEmoji = (emoji: string) => {
+    setPickerOpen(false)
+    // Signal to ChatInput to insert emoji at cursor
+    const event = new CustomEvent("insert-emoji", { detail: emoji })
+    window.dispatchEvent(event)
+  }
+
+  const handleSelectGif = (url: string) => {
+    setPickerOpen(false)
+    const event = new CustomEvent("select-gif", { detail: url })
+    window.dispatchEvent(event)
+  }
 
   return (
     <main className="chat-window">
@@ -49,37 +64,35 @@ function ChatWindow({ conversation, skills, onChangeSkill, onTitleChange }: Prop
             )}
           </div>
           <div>
-            <h3>{conversation.title}</h3>
-            <div className="skill-tag" onClick={() => setSkillMenuOpen(!skillMenuOpen)}>
-              {currentSkill?.name ?? conversation.skill_name}
-              <span className="arrow">▾</span>
-            </div>
+            <h3>{currentSkill?.name ?? conversation.skill_name}</h3>
           </div>
-          {skillMenuOpen && (
-            <div className="skill-menu">
-              {skills.map((s) => (
-                <button
-                  key={s.id}
-                  className={s.id === conversation.skill_name ? "active" : ""}
-                  onClick={() => {
-                    onChangeSkill(conversation.id, s.id)
-                    setSkillMenuOpen(false)
-                  }}
-                >
-                  {s.name} — {s.relationship}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </header>
 
-      <div className="messages-area">
+      <div className="messages-area" onClick={() => setPickerOpen(false)}>
         {messages.map((msg) => (
-          <ChatBubble key={msg.id} role={msg.role} content={msg.content} />
+          <ChatBubble
+            key={msg.id}
+            role={msg.role}
+            content={msg.content}
+            stickerUrl={(msg as any).stickerUrl}
+            stickerEmoji={(msg as any).stickerEmoji}
+            userAvatar={userProfile.avatar ? `${API}${userProfile.avatar}` : null}
+            skillAvatar={currentSkill?.avatar ? `${API}${currentSkill.avatar}` : null}
+            userName={userProfile.name}
+            skillName={currentSkill?.name ?? conversation.skill_name}
+          />
         ))}
-        {sending && (
-          <ChatBubble role="assistant" content="..." isStreaming />
+        {sending && messages.length > 0 && messages[messages.length - 1].role === "user" && (
+          <ChatBubble
+            role="assistant"
+            content="..."
+            isStreaming
+            userAvatar={userProfile.avatar ? `${API}${userProfile.avatar}` : null}
+            skillAvatar={currentSkill?.avatar ? `${API}${currentSkill.avatar}` : null}
+            userName={userProfile.name}
+            skillName={currentSkill?.name ?? conversation.skill_name}
+          />
         )}
       </div>
 
@@ -89,7 +102,21 @@ function ChatWindow({ conversation, skills, onChangeSkill, onTitleChange }: Prop
           <button onClick={clearError}>✕</button>
         </div>
       )}
-      <ChatInput onSend={(text) => send(text)} disabled={sending} />
+
+      {pickerOpen && (
+        <StickerPicker
+          onSelectEmoji={handleSelectEmoji}
+          onSelectGif={handleSelectGif}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      <ChatInput
+        onSend={(text, stickerUrl) => send(text, stickerUrl)}
+        disabled={sending}
+        onTogglePicker={() => setPickerOpen(!pickerOpen)}
+        pickerOpen={pickerOpen}
+      />
     </main>
   )
 }

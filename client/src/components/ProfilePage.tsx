@@ -10,9 +10,10 @@ interface UserProfile {
 interface Props {
   onClose: () => void
   onProfileUpdate?: () => void
+  apiHeaders: () => Record<string, string>
 }
 
-function ProfilePage({ onClose, onProfileUpdate }: Props) {
+function ProfilePage({ onClose, onProfileUpdate, apiHeaders }: Props) {
   const [profile, setProfile] = useState<UserProfile>({ name: "我", avatar: null })
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState("")
@@ -22,7 +23,7 @@ function ProfilePage({ onClose, onProfileUpdate }: Props) {
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    fetch(`${API}/api/profile`)
+    fetch(`${API}/api/profile`, { headers: apiHeaders() })
       .then((r) => r.json())
       .then((data) => {
         setProfile(data)
@@ -39,7 +40,7 @@ function ProfilePage({ onClose, onProfileUpdate }: Props) {
     try {
       const res = await fetch(`${API}/api/profile`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: apiHeaders(),
         body: JSON.stringify({ name }),
       })
       if (!res.ok) throw new Error("Failed")
@@ -62,8 +63,11 @@ function ProfilePage({ onClose, onProfileUpdate }: Props) {
     form.append("file", file)
 
     try {
+      const headers: Record<string, string> = {}
+      if (apiHeaders().Authorization) headers["Authorization"] = apiHeaders().Authorization
       const res = await fetch(`${API}/api/profile/avatar`, {
         method: "POST",
+        headers,
         body: form,
       })
       if (!res.ok) throw new Error("Failed")
@@ -82,7 +86,7 @@ function ProfilePage({ onClose, onProfileUpdate }: Props) {
 
   const handleAvatarDelete = async () => {
     try {
-      await fetch(`${API}/api/profile/avatar`, { method: "DELETE" })
+      await fetch(`${API}/api/profile/avatar`, { method: "DELETE", headers: apiHeaders() })
       setProfile((prev) => ({ ...prev, avatar: null }))
       setSuccess("头像已移除")
       setTimeout(() => setSuccess(""), 1500)

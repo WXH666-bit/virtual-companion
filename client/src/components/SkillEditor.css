@@ -104,6 +104,26 @@
   border-color: #ff9800;
 }
 
+/* Clear context button */
+.btn-clear-context {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-clear-context:hover {
+  background: #ffebee;
+  border-color: #f44336;
+}
+
 /* Inline rename input */
 .rename-inline-input {
   width: 120px;
@@ -269,5 +289,33 @@
   color: #bbb;
   font-size: 13px;
   line-height: 1.8;
+}
+
+/* Footer with side-by-side buttons */
+.skill-editor-footer {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.skill-editor-footer .btn-primary-action {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #4caf50;
+  border-radius: 8px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.skill-editor-footer .btn-primary-action:hover {
+  background: #c8e6c9;
+}
+
+.skill-editor-footer .btn-close-modal {
+  width: auto;
+  flex: 1;
 }
 

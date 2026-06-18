@@ -1,10 +1,18 @@
-"""一键启动前后端 — python start.py"""
+"""一键启动前后端。
+
+本地模式（仅本机访问）：
+    python start.py
+
+局域网模式（同网络其他人可访问）：
+    python start.py --lan
+"""
 import subprocess
 import sys
 import time
 import webbrowser
 import signal
 import os
+import socket
 from pathlib import Path
 
 ROOT = Path(__file__).parent
@@ -13,6 +21,19 @@ CLIENT_DIR = ROOT / "client"
 
 backend = None
 frontend = None
+LAN_MODE = "--lan" in sys.argv
+
+
+def get_lan_ip() -> str:
+    """Get the primary LAN IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
 
 
 def cleanup():
@@ -122,10 +143,16 @@ def main():
         )
 
     # ── Start backend ──
-    print("🚀 启动后端 (FastAPI) http://localhost:58000 ...")
+    if LAN_MODE:
+        print(f"🚀 启动后端 (FastAPI) http://0.0.0.0:58000 (局域网模式)...")
+    else:
+        print("🚀 启动后端 (FastAPI) http://localhost:58000 ...")
     kill_port(58000)
+    uvicorn_args = [sys.executable, "-m", "uvicorn", "main:app", "--port", "58000"]
+    if LAN_MODE:
+        uvicorn_args += ["--host", "0.0.0.0"]
     backend = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "main:app", "--port", "58000"],
+        uvicorn_args,
         cwd=SERVER_DIR,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -135,7 +162,10 @@ def main():
     )
 
     # ── Start frontend ──
-    print("🎨 启动前端 (Vite) http://localhost:5173 ...")
+    if LAN_MODE:
+        print("🎨 启动前端 (Vite) http://0.0.0.0:5173 (局域网模式)...")
+    else:
+        print("🎨 启动前端 (Vite) http://localhost:5173 ...")
     npx = npm.replace("npm", "npx")  # same dir
     frontend = subprocess.Popen(
         [npx, "vite", "--host"],
@@ -149,12 +179,24 @@ def main():
 
     # ── Wait for servers & open browser ──
     time.sleep(4)
-    print("🌐 打开浏览器...")
-    webbrowser.open("http://localhost:5173")
+
+    if LAN_MODE:
+        lan_ip = get_lan_ip()
+        lan_url = f"http://{lan_ip}:5173"
+        print(f"🌐 局域网地址: {lan_url}")
+        print(f"   本地访问: http://localhost:5173")
+        print(f"   分享 {lan_url} 给局域网其他人即可使用")
+        webbrowser.open(lan_url)
+    else:
+        print("🌐 打开浏览器...")
+        webbrowser.open("http://localhost:5173")
 
     # ── Print live output ──
     print("\n" + "=" * 50)
-    print("✅ 全部就绪！按 Ctrl+C 停止")
+    if LAN_MODE:
+        print("✅ 全部就绪（局域网模式）！按 Ctrl+C 停止")
+    else:
+        print("✅ 全部就绪！按 Ctrl+C 停止")
     print("=" * 50 + "\n")
 
     try:
@@ -185,6 +227,15 @@ def main():
                             ]
                         ):
                             print(f"[{name}] ✅ {line}")
+                        elif any(
+                            kw in line
+                            for kw in [
+                                "[Chat]",
+                                "[Vision]",
+                                "[Sticker]",
+                            ]
+                        ):
+                            print(f"[{name}] ℹ️ {line}")
 
             time.sleep(0.3)
     except KeyboardInterrupt:

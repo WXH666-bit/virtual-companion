@@ -45,15 +45,45 @@
 .sidebar-user-bar {
   display: flex;
   align-items: center;
-  padding: 10px 14px;
-  gap: 10px;
-  cursor: pointer;
+  padding: 6px 14px 6px 6px;
+  gap: 4px;
   border-bottom: 1px solid #444;
+}
+
+.sidebar-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
   transition: background 0.15s;
 }
 
-.sidebar-user-bar:hover {
+.sidebar-user-info:hover {
   background: #3a3a3a;
+}
+
+.sidebar-logout-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.sidebar-logout-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .sidebar-user-avatar {

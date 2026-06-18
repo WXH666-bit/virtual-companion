@@ -1,13 +1,99 @@
 .chat-input-bar {
   display: flex;
+  align-items: center;
   gap: 10px;
   padding: 14px 20px;
   background: #fff;
   border-top: 1px solid #e0e0e0;
 }
 
+/* ── Sticker toggle button ── */
+
+.sticker-toggle-btn {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  font-size: 22px;
+  border: 1px solid #ddd;
+  background: #f9f9f9;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.sticker-toggle-btn:hover,
+.sticker-toggle-btn.active {
+  border-color: #4caf50;
+  background: #e8f5e9;
+}
+
+/* ── Sticker preview ── */
+
+.sticker-preview {
+  position: relative;
+  flex: 0 0 auto;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  transition: border-color 0.15s;
+}
+
+.sticker-preview:hover {
+  border-color: #ff5252;
+}
+
+.sticker-preview-x {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  background: #ff5252;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sticker-preview:hover .sticker-preview-x {
+  opacity: 1;
+}
+
+.sticker-preview-emoji {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  background: #f9f9f9;
+}
+
+.sticker-preview-gif {
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  background: #f9f9f9;
+}
+
+.sticker-preview-gif img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Text input ── */
+
 .chat-input {
   flex: 1;
+  min-width: 0;
   padding: 10px 14px;
   border: 1px solid #ddd;
   border-radius: 6px;
@@ -20,7 +106,10 @@
   border-color: #4caf50;
 }
 
+/* ── Send button ── */
+
 .send-btn {
+  flex: 0 0 auto;
   padding: 10px 20px;
   background: #4caf50;
   color: #fff;

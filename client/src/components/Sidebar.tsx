@@ -1,7 +1,7 @@
 import { useState } from "react"
 import type { Conversation, Skill } from "../App"
 import { API } from "../App"
-import SkillPicker from "./SkillPicker"
+import NewChatPicker from "./NewChatPicker"
 import "./Sidebar.css"
 
 interface Props {
@@ -9,13 +9,16 @@ interface Props {
   activeId: number | null
   skills: Skill[]
   userProfile: { name: string; avatar: string | null }
+  apiHeaders: () => Record<string, string>
   onSelect: (conv: Conversation) => void
   onNewChat: (skillName: string) => void
+  onCreatedAndChat: (skillName: string) => void
   onDelete: (id: number) => void
   onRename: (id: number, title: string) => void
   onOpenSettings: () => void
   onOpenSkillEditor: () => void
   onOpenProfile: () => void
+  onLogout: () => void
 }
 
 function Sidebar({
@@ -23,13 +26,16 @@ function Sidebar({
   activeId,
   skills,
   userProfile,
+  apiHeaders,
   onSelect,
   onNewChat,
+  onCreatedAndChat,
   onDelete,
   onRename,
   onOpenSettings,
   onOpenSkillEditor,
   onOpenProfile,
+  onLogout,
 }: Props) {
   const [showNewChat, setShowNewChat] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -60,10 +66,15 @@ function Sidebar({
       </div>
 
       {showNewChat && (
-        <SkillPicker
+        <NewChatPicker
           skills={skills}
+          apiHeaders={apiHeaders}
           onPick={(skillName) => {
             onNewChat(skillName)
+            setShowNewChat(false)
+          }}
+          onCreated={(skillName) => {
+            onCreatedAndChat(skillName)
             setShowNewChat(false)
           }}
           onClose={() => setShowNewChat(false)}
@@ -71,22 +82,27 @@ function Sidebar({
       )}
 
       {/* User profile bar */}
-      <div className="sidebar-user-bar" onClick={onOpenProfile}>
-        <div className="sidebar-user-avatar">
-          {userProfile.avatar ? (
-            <img
-              className="sidebar-user-avatar-img"
-              src={`${API}${userProfile.avatar}`}
-              alt={userProfile.name}
-            />
-          ) : (
-            <span className="sidebar-user-avatar-default">
-              {userProfile.name.charAt(0)}
-            </span>
-          )}
+      <div className="sidebar-user-bar">
+        <div className="sidebar-user-info" onClick={onOpenProfile}>
+          <div className="sidebar-user-avatar">
+            {userProfile.avatar ? (
+              <img
+                className="sidebar-user-avatar-img"
+                src={`${API}${userProfile.avatar}`}
+                alt={userProfile.name}
+              />
+            ) : (
+              <span className="sidebar-user-avatar-default">
+                {userProfile.name.charAt(0)}
+              </span>
+            )}
+          </div>
+          <span className="sidebar-user-name">{userProfile.name}</span>
+          <span className="sidebar-user-arrow">›</span>
         </div>
-        <span className="sidebar-user-name">{userProfile.name}</span>
-        <span className="sidebar-user-arrow">›</span>
+        <button className="sidebar-logout-btn" onClick={onLogout} title="退出登录">
+          🚪
+        </button>
       </div>
 
       <div className="conv-list">

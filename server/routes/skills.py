@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from typing import Optional
 
 from db.database import get_db
-from db.models import Conversation, Message, Setting
+from db.models import Conversation, Message, Setting, User
+from services.auth import get_current_user
 from services.skill import list_skills, load_skill, SKILLS_DIR, AVATARS_DIR, AVATAR_EXTENSIONS
 
 router = APIRouter(tags=["skills"])
@@ -45,16 +46,23 @@ def get_skill(skill_id: str):
 # ── Conversations ──
 
 @router.get("/api/conversations")
-def get_conversations(db: Session = Depends(get_db)):
-    """List all conversations, newest first."""
-    return db.query(Conversation).order_by(
-        Conversation.updated_at.desc()).all()
+def get_conversations(db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    """List all conversations for the current user, newest first."""
+    return db.query(Conversation).filter(
+        Conversation.user_id == user.id
+    ).order_by(Conversation.updated_at.desc()).all()
 
 
 @router.post("/api/conversations")
-def create_conversation(body: ConversationCreate, db: Session = Depends(get_db)):
+def create_conversation(body: ConversationCreate, db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
     """Create a new conversation with a given skill."""
-    conv = Conversation(title=body.title, skill_name=body.skill_name)
+    title = body.title
+    if not title or title == "新的对话":
+        skill = load_skill(body.skill_name)
+        title = skill.get("name", body.skill_name) if skill else body.skill_name
+    conv = Conversation(title=title, skill_name=body.skill_name, user_id=user.id)
     db.add(conv)
     db.commit()
     db.refresh(conv)
@@ -62,8 +70,10 @@ def create_conversation(body: ConversationCreate, db: Session = Depends(get_db))
 
 
 @router.delete("/api/conversations/{conv_id}")
-def delete_conversation(conv_id: int, db: Session = Depends(get_db)):
-    conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
+def delete_conversation(conv_id: int, db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    conv = db.query(Conversation).filter(
+        Conversation.id == conv_id, Conversation.user_id == user.id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Not found")
     db.delete(conv)
@@ -73,8 +83,10 @@ def delete_conversation(conv_id: int, db: Session = Depends(get_db)):
 
 @router.put("/api/conversations/{conv_id}/rename")
 def rename_conversation(conv_id: int, body: ConversationRename,
-                        db: Session = Depends(get_db)):
-    conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
+                        db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    conv = db.query(Conversation).filter(
+        Conversation.id == conv_id, Conversation.user_id == user.id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Not found")
     conv.title = body.title
@@ -84,8 +96,10 @@ def rename_conversation(conv_id: int, body: ConversationRename,
 
 @router.put("/api/conversations/{conv_id}/skill")
 def change_skill(conv_id: int, skill_name: str,
-                 db: Session = Depends(get_db)):
-    conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
+                 db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    conv = db.query(Conversation).filter(
+        Conversation.id == conv_id, Conversation.user_id == user.id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Not found")
     conv.skill_name = skill_name
@@ -93,12 +107,37 @@ def change_skill(conv_id: int, skill_name: str,
     return {"ok": True}
 
 
+@router.delete("/api/skills/{skill_id}/clear-context")
+def clear_skill_context(skill_id: str,
+                        db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """Clear all messages in all conversations for a given skill."""
+    skill = load_skill(skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    skill_name = skill.get("name", skill_id)
+    convs = db.query(Conversation).filter(
+        Conversation.user_id == user.id,
+        Conversation.skill_name == skill_name,
+    ).all()
+    cleared = 0
+    for conv in convs:
+        db.query(Message).filter(
+            Message.conversation_id == conv.id
+        ).delete()
+        cleared += 1
+    db.commit()
+    return {"ok": True, "cleared": cleared}
+
+
 # ── Messages ──
 
 @router.get("/api/conversations/{conv_id}/messages")
-def get_messages(conv_id: int, db: Session = Depends(get_db)):
+def get_messages(conv_id: int, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
     """Get all messages for a conversation."""
-    conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
+    conv = db.query(Conversation).filter(
+        Conversation.id == conv_id, Conversation.user_id == user.id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Not found")
     return db.query(Message).filter(
@@ -113,24 +152,28 @@ class SettingUpdate(BaseModel):
 
 @router.put("/api/settings/{key}")
 def update_setting(key: str, body: SettingUpdate,
-                   db: Session = Depends(get_db)):
-    """Save a setting (e.g. api_key)."""
-    row = db.query(Setting).filter(Setting.key == key).first()
+                   db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    """Save a setting for the current user (e.g. api_key)."""
+    row = db.query(Setting).filter(
+        Setting.key == key, Setting.user_id == user.id).first()
     if row:
         row.value = body.value
     else:
-        row = Setting(key=key, value=body.value)
+        row = Setting(key=key, value=body.value, user_id=user.id)
         db.add(row)
     db.commit()
-    from services.llm import _resolve_api_key
-    _resolve_api_key(db)  # bust cache
+    from services.llm import bust_cache
+    bust_cache()  # force new client on next request
     return {"ok": True}
 
 
 @router.get("/api/settings/{key}")
-def get_setting(key: str, db: Session = Depends(get_db)):
-    """Get a setting value. Returns empty string if not set."""
-    row = db.query(Setting).filter(Setting.key == key).first()
+def get_setting(key: str, db: Session = Depends(get_db),
+                user: User = Depends(get_current_user)):
+    """Get a setting value for the current user. Returns empty string if not set."""
+    row = db.query(Setting).filter(
+        Setting.key == key, Setting.user_id == user.id).first()
     return {"key": key, "value": row.value if row else ""}
 
 
@@ -216,6 +259,38 @@ def delete_skill(skill_id: str):
     path.unlink()
     # Also delete avatar if exists
     _delete_avatar_files(skill_id)
+    return {"ok": True}
+
+
+# ── Skill update ──
+
+class SkillUpdate(BaseModel):
+    raw_prompt: Optional[str] = None
+    name: Optional[str] = None
+    relationship: Optional[str] = None
+
+
+@router.put("/api/skills/{skill_id}")
+def update_skill(skill_id: str, body: SkillUpdate, db: Session = Depends(get_db)):
+    """Update a skill's prompt content and/or metadata."""
+    path = SKILLS_DIR / f"{skill_id}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    if body.raw_prompt is not None:
+        data["raw_prompt"] = body.raw_prompt.strip()
+        # Clear structured fields if switching to freeform
+        for k in ("personality", "backstory", "speaking_style", "example_dialogue"):
+            data.pop(k, None)
+    if body.name is not None and body.name.strip():
+        data["name"] = body.name.strip()
+        data["description"] = f"{data.get('relationship', '朋友')} · 自定义"
+    if body.relationship is not None and body.relationship.strip():
+        data["relationship"] = body.relationship.strip()
+
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"ok": True}
 
 
@@ -345,6 +420,63 @@ def delete_avatar(skill_id: str):
     return {"ok": True}
 
 
+# ── Prompt optimization ──
+
+OPTIMIZE_SYSTEM_PROMPT = """你是一个角色描述优化器。你的任务是把用户提供的长段角色描述压缩精简，同时保留所有关键信息。
+
+## 必须保留
+- 角色名字
+- 性格核心特征（傲娇、温柔、毒舌等）
+- 说话风格和语气词习惯
+- 与用户的关系及关键背景事件（2-3句概括即可）
+- 标志性的小动作或口头禅
+
+## 必须去除
+- 重复描述的同类事件（挑选最具代表性的保留）
+- 过度修饰的文学性描写
+- 冗余的情节细节
+
+## 输出要求
+- 保持原文的第一人称或第三人称视角
+- 不要改变角色的人设和性格
+- 使用要点式分段，每段1-3句话
+- 压缩到原文 30-50% 长度
+- 直接输出压缩后的描述，不要加任何解释或前缀"""
+
+
+class OptimizePromptRequest(BaseModel):
+    prompt: str
+
+
+@router.post("/api/skills/optimize-prompt")
+def optimize_prompt(body: OptimizePromptRequest, db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    """Use the configured LLM to compress & optimize a character description."""
+    from services.llm import get_client, resolve_provider_config
+
+    config = resolve_provider_config(db, user_id=user.id)
+    api_key = config["api_key"]
+    if not api_key or "placeholder" in api_key or "sk-your" in api_key:
+        raise HTTPException(status_code=400, detail="请先在设置里配置 API Key")
+
+    client = get_client(db, user_id=user.id)
+
+    try:
+        resp = client.chat.completions.create(
+            model=config["model_name"],
+            messages=[
+                {"role": "system", "content": OPTIMIZE_SYSTEM_PROMPT},
+                {"role": "user", "content": body.prompt},
+            ],
+            temperature=0.3,
+            max_tokens=2048,
+        )
+        optimized = resp.choices[0].message.content or ""
+        return {"optimized": optimized.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"优化失败: {str(e)}")
+
+
 # ── User profile ──
 
 PROFILE_AVATAR_PREFIX = "_profile"
@@ -364,9 +496,11 @@ class ProfileUpdate(BaseModel):
 
 
 @router.get("/api/profile")
-def get_profile(db: Session = Depends(get_db)):
-    """Get user profile (name + avatar)."""
-    name_row = db.query(Setting).filter(Setting.key == "user_name").first()
+def get_profile(db: Session = Depends(get_db),
+                user: User = Depends(get_current_user)):
+    """Get user profile (name + avatar) for the current user."""
+    name_row = db.query(Setting).filter(
+        Setting.key == "user_name", Setting.user_id == user.id).first()
     return {
         "name": name_row.value if name_row else "我",
         "avatar": _get_profile_avatar_url(),
@@ -374,17 +508,19 @@ def get_profile(db: Session = Depends(get_db)):
 
 
 @router.put("/api/profile")
-def update_profile(body: ProfileUpdate, db: Session = Depends(get_db)):
-    """Update user profile name."""
+def update_profile(body: ProfileUpdate, db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    """Update user profile name for the current user."""
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name cannot be empty")
 
-    row = db.query(Setting).filter(Setting.key == "user_name").first()
+    row = db.query(Setting).filter(
+        Setting.key == "user_name", Setting.user_id == user.id).first()
     if row:
         row.value = name
     else:
-        row = Setting(key="user_name", value=name)
+        row = Setting(key="user_name", value=name, user_id=user.id)
         db.add(row)
     db.commit()
     return {"ok": True, "name": name}
@@ -426,3 +562,182 @@ def delete_profile_avatar():
     """Remove user profile avatar."""
     _delete_avatar_files(PROFILE_AVATAR_PREFIX)
     return {"ok": True}
+
+
+# ── Provider config ──
+
+class ProviderConfig(BaseModel):
+    provider: str = "deepseek"
+    api_key: str = ""
+    base_url: str = ""
+    model_name: str = ""
+
+
+@router.get("/api/providers/presets")
+def get_provider_presets():
+    """Return available provider presets."""
+    from services.llm import PROVIDER_PRESETS
+    return PROVIDER_PRESETS
+
+
+@router.get("/api/provider")
+def get_provider(db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    """Get the current LLM provider configuration for the current user."""
+    from services.llm import resolve_provider_config
+    config = resolve_provider_config(db, user_id=user.id)
+    return {
+        "provider": config["provider"],
+        "api_key": config["api_key"],
+        "base_url": config["base_url"],
+        "model_name": config["model_name"],
+    }
+
+
+@router.get("/api/vision/config")
+def get_vision_config(db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    """Get all vision settings in one call."""
+    def _get(key: str) -> str:
+        row = db.query(Setting).filter(
+            Setting.key == key, Setting.user_id == user.id
+        ).first()
+        return row.value if row and row.value else ""
+    return {
+        "vision_provider": _get("vision_provider"),
+        "vision_model": _get("vision_model"),
+        "vision_api_key": _get("vision_api_key"),
+        "vision_base_url": _get("vision_base_url"),
+    }
+
+
+@router.put("/api/provider")
+def update_provider(body: ProviderConfig, db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    """Save LLM provider configuration for the current user."""
+    from services.llm import PROVIDER_PRESETS, bust_cache
+
+    provider = body.provider.strip()
+    if provider not in PROVIDER_PRESETS:
+        raise HTTPException(status_code=400,
+                            detail=f"Unknown provider: {provider}")
+
+    # Save each setting
+    settings_to_save = {}
+
+    # Provider ID
+    settings_to_save["provider"] = provider
+
+    # Base URL (only save if custom override, otherwise clear)
+    if body.base_url.strip():
+        preset = PROVIDER_PRESETS.get(provider, {})
+        if body.base_url.strip() != preset.get("base_url", ""):
+            settings_to_save["base_url"] = body.base_url.strip()
+        else:
+            settings_to_save["base_url"] = ""  # clear any previous override
+    else:
+        # If switching to a preset, clear custom URL
+        preset = PROVIDER_PRESETS.get(provider, {})
+        if preset.get("base_url", ""):
+            settings_to_save["base_url"] = ""
+
+    # Model name
+    if body.model_name.strip():
+        preset = PROVIDER_PRESETS.get(provider, {})
+        if body.model_name.strip() != preset.get("default_model", ""):
+            settings_to_save["model_name"] = body.model_name.strip()
+        else:
+            settings_to_save["model_name"] = ""
+    else:
+        settings_to_save["model_name"] = ""
+
+    # API Key (only if provided, i.e. actual key NOT masked)
+    if body.api_key.strip() and "*" not in body.api_key:
+        settings_to_save["api_key"] = body.api_key.strip()
+
+    # Write to DB — each setting is keyed by (key, user_id)
+    for key, val in settings_to_save.items():
+        row = db.query(Setting).filter(
+            Setting.key == key, Setting.user_id == user.id).first()
+        if val:
+            if row:
+                row.value = val
+            else:
+                row = Setting(key=key, value=val, user_id=user.id)
+                db.add(row)
+        else:
+            # Remove empty values to let fallback work
+            if row:
+                row.value = ""
+                # Don't delete — keep the row so we know it was explicitly cleared
+
+    db.commit()
+    bust_cache()
+    return {"ok": True}
+
+
+# ── Sticker API ──
+
+
+@router.get("/api/stickers/emoji")
+def get_emoji_map():
+    """Return the emoji category map for the frontend sticker picker."""
+    from services.sticker import list_emoji_map
+    return {"categories": list_emoji_map()}
+
+
+# ── Vision config ──
+
+
+@router.get("/api/vision/providers")
+def get_vision_providers():
+    """Return available vision model providers and their presets."""
+    from services.vision import VISION_PROVIDER_PRESETS
+    return VISION_PROVIDER_PRESETS
+
+
+@router.get("/api/vision/check")
+def check_vision_support(db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    """Check if current chat model supports vision natively."""
+    from services.vision import supports_vision, is_vision_enabled
+    from services.llm import resolve_provider_config
+
+    config = resolve_provider_config(db, user_id=user.id)
+    native = supports_vision(config["provider"], config["model_name"])
+    enabled = is_vision_enabled(db, user_id=user.id)
+
+    return {
+        "native": native,
+        "enabled": enabled,
+        "provider": config["provider"],
+        "model": config["model_name"],
+    }
+
+
+@router.get("/api/stickers/popular")
+def get_popular_stickers():
+    """Return a curated set of popular GIF stickers across categories."""
+    from services.sticker import search_sticker_gif
+    seen = set()
+    results = []
+    for kw in ["开心", "撒娇", "笑哭", "猫", "狗", "比心", "加油", "晚安"]:
+        for url in search_sticker_gif(kw, max_results=3):
+            if url not in seen:
+                seen.add(url)
+                results.append(url)
+                if len(results) >= 20:
+                    break
+        if len(results) >= 20:
+            break
+    return {"results": results}
+
+
+@router.get("/api/stickers/search")
+def search_stickers(q: str = ""):
+    """Search ChineseBQB GIF stickers by keyword."""
+    if not q.strip():
+        return {"keyword": q, "results": []}
+    from services.sticker import search_sticker_gif
+    urls = search_sticker_gif(q.strip(), max_results=20)
+    return {"keyword": q.strip(), "results": urls}
